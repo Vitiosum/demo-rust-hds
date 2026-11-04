@@ -1,0 +1,44 @@
+/* Styles propres à Suivi patient. cc-brand.css (kit de marque Clever) n'est jamais modifié. */
+
+.bandeau { border-bottom: 1px solid var(--cc-border); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.bandeau .cc-container { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.bandeau--prod { color: #5fe3d3; background: rgba(17, 190, 169, 0.08); }
+.bandeau--local { color: #ffd166; background: rgba(252, 185, 0, 0.08); }
+
+.page { display: flex; flex-direction: column; gap: 18px; padding-block: 28px 8px; }
+.titre { font-size: clamp(26px, 3.4vw, 34px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.15; }
+.sous-titre { margin-top: 6px; color: var(--cc-muted); }
+.meta { font-size: 13px; color: var(--cc-muted); margin-top: 2px; }
+.note { margin-top: 12px; font-size: 13px; color: var(--cc-muted); }
+.mono { font-family: var(--cc-mono); font-size: 13px; white-space: nowrap; }
+.retour { display: inline-block; margin-bottom: 10px; font-size: 14px; color: var(--cc-muted); }
+.retour:hover { color: var(--cc-text); }
+
+.lien { color: var(--cc-text); font-weight: 700; border-bottom: 1px solid var(--cc-border-strong); }
+.lien:hover { color: var(--cc-orange); border-color: var(--cc-orange); }
+.lien-patient { font-family: var(--cc-mono); font-size: 13px; color: var(--cc-text-2); overflow-wrap: anywhere; border-bottom: 1px solid var(--cc-border-strong); }
+.lien-patient:hover { color: var(--cc-orange); border-color: var(--cc-orange); }
+
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cc-table td .cc-badge { margin: 2px 4px 2px 0; }
+.ligne-alerte td:first-child { box-shadow: inset 3px 0 0 var(--cc-red); }
+.douleur-haute { color: #ff9aab; font-weight: 700; }
+
+.alerte { padding: 14px 18px; border-radius: var(--cc-radius-sm); border: 1px solid rgba(203, 28, 66, 0.55); background: rgba(203, 28, 66, 0.14); color: #ffc2cc; }
+.succes { padding: 14px 18px; border-radius: var(--cc-radius-sm); border: 1px solid rgba(17, 190, 169, 0.5); background: rgba(17, 190, 169, 0.12); color: #5fe3d3; font-weight: 600; }
+
+.form { display: grid; gap: 14px; }
+.form-2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.connexion { width: 100%; max-width: 440px; margin: 24px auto; }
+.connexion .titre { margin: 6px 0 16px; }
+.connexion .cc-error { margin-bottom: 14px; }
+.connexion .form .cc-btn { width: 100%; }
+.cc-topbar__nav form { margin: 0; }
+
+.checks { list-style: none; margin-top: 8px; }
+.checks--pad { padding: 4px 20px 8px; }
+.check { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--cc-border); }
+.check:last-child { border-bottom: none; }
+.check__icone { flex: none; width: 22px; font-size: 16px; line-height: 1.5; text-align: center; }
+.check__titre { font-weight: 600; }
+.check__valeur { margin-top: 2px; font-family: var(--cc-mono); font-size: 12.5px; color: var(--cc-text-2); overflow-wrap: anywhere; }

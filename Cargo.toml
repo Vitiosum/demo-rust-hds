@@ -1,0 +1,26 @@
+[package]
+name = "suivi-patient-hds"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[[bin]]
+name = "suivi-patient-hds"
+path = "src/main.rs"
+
+# Dépendances minimales : build court sur Clever Cloud (runtime Rust natif, sans Dockerfile).
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "form", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
+# Sans la feature "macros" : elle recompilerait sqlx, rustls et ring une 2e fois pour la proc-macro
+# (build propre 55 s au lieu de 34 s). Les migrations sont embarquées par include_str! (src/migrations.rs).
+sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+# Déjà présent dans l'arbre de sqlx : aucun coût de compilation supplémentaire.
+getrandom = "0.2"
+
+[profile.release]
+opt-level = 1
+

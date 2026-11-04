@@ -10,6 +10,8 @@
 
 **Run it yourself.** The hosted demo was taken down after the presales review (November 2026). The steps in [Deploy on Clever Cloud](#deploy-on-clever-cloud) recreate it from scratch in about 5 minutes.
 
+**Get certified.** This demo runs on Clever Cloud. To deploy your own apps the same way, get certified at the [Clever Cloud Academy](https://academy.clever.cloud/).
+
 **Fictional data only;** production health data requires a signed HDS contract with Clever Cloud.
 
 ![A patient's file, on Clever Cloud (HDS zone): the pain chart with its alert zone above 7, the appointment card holding the personal link, and the register stamp](docs/screenshot-fiche.png)

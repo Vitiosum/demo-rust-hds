@@ -26,7 +26,7 @@ Suivi patient en Rust (axum + sqlx), à déployer en zone HDS sur Clever Cloud. 
 - Pas de feature `macros` de sqlx : elle recompile sqlx, rustls et ring une deuxième fois (build propre 34-41 s au lieu de 55 s sur un Mac M). Les migrations sont embarquées par `include_str!` dans `src/migrations.rs` (même moteur que `sqlx::migrate!`) ; une nouvelle migration = un fichier dans `migrations/` + une ligne dans `MIGRATIONS`.
 - Routes axum 0.8 : `/p/{jeton}`, jamais `:jeton` (panique au démarrage).
 - Requêtes SQL paramétrées uniquement ; dates converties à l'heure de Paris par PostgreSQL (`AT TIME ZONE 'Europe/Paris'`).
-- IP client : dernière valeur de `X-Forwarded-For` (ajoutée par le proxy Clever), jamais la première.
+- IP client : dernière valeur de la **dernière ligne** `X-Forwarded-For` (ajoutée par le proxy Clever), validée comme adresse IP, sinon l'adresse de la socket. Jamais la première valeur ni une ligne envoyée par le client (tests dans `src/auth.rs`).
 - `static/cc-brand.css` est la copie du kit de marque : ne jamais le modifier, styles propres dans `static/app.css`. Pas de Google Fonts : aucune ressource tierce sur une app de santé.
 - Le blocage après 5 échecs est en mémoire : propre à chaque instance, remis à zéro au redémarrage.
 

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -58,18 +58,13 @@ pub fn egal_temps_constant(saisi: &[u8], attendu: &[u8]) -> bool {
 }
 
 /// IP du client. En production, derrière les load balancers Clever Cloud, le proxy ajoute
-/// l'IP réelle à DROITE de X-Forwarded-For : on prend la dernière valeur, jamais la première
-/// (falsifiable par le client). En local, l'adresse de la socket.
+/// l'IP réelle à DROITE de X-Forwarded-For : on prend la dernière valeur de la DERNIÈRE ligne
+/// d'en-tête, jamais une valeur envoyée par le client (une ligne X-Forwarded-For forgée arrive
+/// avant celle du proxy). La valeur doit être une adresse IP valide, sinon on retombe sur la
+/// socket. En local, l'adresse de la socket.
 pub fn ip_client(app: &App, parts: &Parts) -> String {
     if app.production {
-        if let Some(ip) = parts
-            .headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.rsplit(',').next())
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-        {
+        if let Some(ip) = ip_proxy(&parts.headers) {
             return ip.to_string();
         }
     }
@@ -78,6 +73,17 @@ pub fn ip_client(app: &App, parts: &Parts) -> String {
         .get::<ConnectInfo<SocketAddr>>()
         .map(|c| c.0.ip().to_string())
         .unwrap_or_else(|| "inconnue".into())
+}
+
+/// Dernière adresse de la dernière ligne X-Forwarded-For, si c'est une IP valide.
+fn ip_proxy(headers: &HeaderMap) -> Option<IpAddr> {
+    headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .next_back()
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit(',').next())
+        .and_then(|v| v.trim().parse().ok())
 }
 
 /// IP du client, utilisable comme extracteur.
@@ -290,4 +296,42 @@ pub async fn deconnexion(
     }
     let efface = format!("{}=; Max-Age=0; {}", nom_cookie(&app), attributs_cookie(&app));
     Ok(([(header::SET_COOKIE, efface)], Redirect::to("/connexion")).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ip_proxy;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn xff(lignes: &[&str]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for l in lignes {
+            h.append("x-forwarded-for", HeaderValue::from_str(l).unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn ligne_forgee_par_le_client_ignoree() {
+        let h = xff(&["1.2.3.4", "203.0.113.7"]);
+        assert_eq!(ip_proxy(&h), Some("203.0.113.7".parse().unwrap()));
+    }
+
+    #[test]
+    fn valeur_ajoutee_a_droite_par_le_proxy() {
+        let h = xff(&["1.2.3.4, 203.0.113.7"]);
+        assert_eq!(ip_proxy(&h), Some("203.0.113.7".parse().unwrap()));
+    }
+
+    #[test]
+    fn ipv6_acceptee() {
+        let h = xff(&["2001:db8::1"]);
+        assert_eq!(ip_proxy(&h), Some("2001:db8::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn valeur_qui_n_est_pas_une_ip_refusee() {
+        assert_eq!(ip_proxy(&xff(&["1.2.3.4, pas-une-ip"])), None);
+        assert_eq!(ip_proxy(&HeaderMap::new()), None);
+    }
 }

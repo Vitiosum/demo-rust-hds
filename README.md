@@ -92,7 +92,18 @@ Puis ouvrir `https://<domaine>/conformite`, et `https://<domaine>/connexion` ave
 
 ### Durées mesurées
 
-Mesures du 4 novembre 2026, organisation de démo, zone `parhds` : voir la section « Mesures » de `CLAUDE.md`.
+Preuve du 4 novembre 2026 (app `demo-rust-hds-proof`, zone `parhds`, build dédié M), en suivant cette section à la lettre :
+
+| Étape | Durée |
+|---|---|
+| `clever create` | 1 s |
+| `clever scale` (3 commandes) | 2 s |
+| `clever addon create` + `link-addon` | 2 s (base `ACTIVE`, chiffrée, sauvegardée) |
+| Variables et `force-https` | 5 s |
+| Premier build Clever Cloud | 41 s, dont `cargo build --release --locked` 27 s et 20 s d'envoi des caches |
+| `clever deploy` complet (push, build, démarrage, `/health`) | 1 min 30 s |
+
+Build propre en local (Mac M, 194 crates) : 42 s.
 
 ## Bonnes pratiques HDS
 

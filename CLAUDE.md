@@ -30,6 +30,10 @@ Suivi patient en Rust (axum + sqlx), à déployer en zone HDS sur Clever Cloud. 
 - `static/cc-brand.css` est la copie du kit de marque : ne jamais le modifier, styles propres dans `static/app.css`. Pas de Google Fonts : aucune ressource tierce sur une app de santé.
 - Le blocage après 5 échecs est en mémoire : propre à chaque instance, remis à zéro au redémarrage.
 
-## Mesures
+## Mesures (preuve du 2026-11-04, app `demo-rust-hds-proof`)
 
-À compléter après la preuve sur Clever Cloud.
+- `clever deploy` complet : 90 s. File d'attente ~11 s, build 41 s (cargo 27 s sur M, 20 s d'envoi du cache de build de 985 Mo et du cache de dépendances), démarrage + `/health` 10 s.
+- Au démarrage : base jointe en TLSv1.3 (`TLS_AES_256_GCM_SHA384`), PostgreSQL 18.6, migrations et seed en moins d'une seconde.
+- `force-https` était déjà `ENABLED` avant l'étape 5 (vraisemblablement le défaut en `parhds`) ; la commande du README reste, elle rend le réglage explicite et vérifiable.
+- Depuis le Mac, le port de l'add-on ne répond pas (`pg_isready` en échec) : ne pas compter sur `psql` en direct pendant la vidéo, passer par l'app (`/conformite`).
+- Piste non testée pour gagner ~15 s au premier déploiement : alléger le cache de build (`CC_IGNORE_FROM_BUILDCACHE`), au risque de builds suivants plus longs.

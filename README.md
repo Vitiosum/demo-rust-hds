@@ -2,19 +2,21 @@
 
 > A patient follow-up app for a doctor's practice, drawn as a **paper medical file** and deployed in Clever Cloud's **HDS zone** (`parhds`, Paris, certified for health data hosting). The practitioner's space is a manila folder with coloured tabs: each patient is an index card with a small pain chart drawn in SVG, and a red stamp when they report a pain of 7/10 or more. The patient's personal link is an appointment card, where they say how they feel on a 0 to 10 scale. Every access lands in a numbered, append-only register (a PostgreSQL trigger refuses any erasure), and each page that opens patient data shows the register number it has just written, as a blue rubber stamp. The public page `/conformite` is an **inspection report**: 21 HDS good practices checked live, from the request itself and from the database (TLS version and cipher read in `pg_stat_ssl`, security headers, session, log trigger), with the proof typed on each line and a final stamp. `scripts/verif-hds.sh` checks the platform side: zone, encryption at rest, backups, forced HTTPS, 2FA. One binary on the **native Rust runtime**, no Dockerfile, a **PostgreSQL add-on** on a dedicated plan, encrypted at rest, and no third-party resource at all: system fonts, SVG drawings, no JavaScript.
 
-![The practitioner's folder, run locally: three fictional patients as index cards, one pain alert stamped 8/10, the access-register stamp](docs/screenshot-desktop.png)
+![The practitioner's folder, on Clever Cloud (HDS zone): three fictional patients as index cards, one pain alert stamped 8/10, the access-register stamp](docs/screenshot-desktop.png)
 
-<img src="docs/screenshot-phone.png" alt="A patient's appointment card on a phone, run locally: next appointment, instructions, pain scale with 6 selected" width="300">
+<img src="docs/screenshot-phone.png" alt="A patient's appointment card on a phone, on Clever Cloud (HDS zone): next appointment, instructions, pain scale with 6 selected" width="300">
+
+**Screenshots taken on Clever Cloud, HDS zone (`parhds`), 4 November 2026**, after following [Deploy on Clever Cloud](#deploy-on-clever-cloud) to the letter: full `clever deploy` in 1 min 33 s (first build, `cargo build --release --locked` 26 s on the dedicated M build), `/conformite` 21 OK, 0 KO, 1 info (PostgreSQL 18.6 over TLSv1.3), `verif-hds.sh` 9/9. App and database deleted afterwards.
 
 **Run it yourself.** The hosted demo was taken down after the presales review (November 2026). The steps in [Deploy on Clever Cloud](#deploy-on-clever-cloud) recreate it from scratch in about 5 minutes.
 
 **Fictional data only;** production health data requires a signed HDS contract with Clever Cloud.
 
-![A patient's file, run locally: the pain chart with its alert zone above 7, the appointment card holding the personal link, and the register stamp](docs/screenshot-fiche.png)
+![A patient's file, on Clever Cloud (HDS zone): the pain chart with its alert zone above 7, the appointment card holding the personal link, and the register stamp](docs/screenshot-fiche.png)
 
 ## What the HDS zone does here
 
-![The /conformite inspection report, run locally: the database TLS line fails locally, hence the red stamp; on Clever Cloud the same page reads 21 OK, 0 KO](docs/screenshot-conformite.png)
+![The /conformite inspection report, on Clever Cloud (HDS zone): 21 OK, 0 KO, 1 info, the database reached over TLSv1.3, the green Conforme stamp](docs/screenshot-conformite.png)
 
 | Practice | How | Where you see it in the file |
 |---|---|---|
@@ -36,7 +38,7 @@
 
 `/conformite` (and `/conformite.json`, unchanged) holds no patient data: 21 checks plus the PostgreSQL version, computed at each load, and the six platform points that `verif-hds.sh` covers. The final stamp reads **Conforme** when no line fails. On Clever Cloud (`parhds`, 4 November 2026) the page read 21 OK, 0 KO, 1 info (the PostgreSQL version). Run locally, the database TLS line fails and the sslmode, HTTPS and Secure-cookie lines are information only. The PostgreSQL add-on's TLS certificate is self-signed: `require` encrypts the connection without verifying the chain.
 
-![The end of the report, run locally: the six platform points left to verif-hds.sh, the visa, and the Clever Cloud Academy seal](docs/screenshot-visa.png)
+![The end of the report, on Clever Cloud (HDS zone): the six platform points left to verif-hds.sh, the visa, and the Clever Cloud Academy seal](docs/screenshot-visa.png)
 
 The report closes on a visa and a seal: the Clever Cloud Academy badge, with "Cette app tourne sur Clever Cloud. Vous aussi, certifiez-vous." and a link to [academy.clever.cloud](https://academy.clever.cloud). Every other page carries the same invitation at the foot of the folder, next to the "Running on Clever Cloud" archive label (`CC_APP_NAME`, `APP_ID`, `INSTANCE_NUMBER`, `INSTANCE_TYPE`, `CC_PRETTY_INSTANCE_NAME`, short `CC_COMMIT_ID`, `CC_DEPLOYMENT_ID`; "Local" outside the platform).
 

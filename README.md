@@ -55,7 +55,7 @@ clever service link-addon "$APP-db"
 ```bash
 clever env set APP_ENV production
 clever env set SEED_DEMO true
-clever env set PRATICIEN_LOGIN praticien
+clever env set PRATICIEN_LOGIN admin
 (umask 077 && openssl rand -hex 16 > "$MDP_FICHIER")
 clever env set PRATICIEN_PASSWORD "$(cat "$MDP_FICHIER")" > /dev/null
 ```
@@ -88,7 +88,7 @@ clever domain
 ./scripts/verif-hds.sh "$APP"     # checklist ✅/❌, sans aucun secret
 ```
 
-Puis ouvrir `https://<domaine>/conformite`, et `https://<domaine>/connexion` avec `praticien` et le mot de passe de `$MDP_FICHIER` (`pbcopy < "$MDP_FICHIER"` sur macOS).
+Puis ouvrir `https://<domaine>/conformite`, et `https://<domaine>/connexion` avec `admin` et le mot de passe de `$MDP_FICHIER` (`pbcopy < "$MDP_FICHIER"` sur macOS).
 
 ### Durées mesurées
 

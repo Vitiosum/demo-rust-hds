@@ -3,6 +3,9 @@
 #
 #   ./scripts/verif-hds.sh <alias|app_id>
 #
+# Alias : lu dans .clever.json (dossier de la démo, sinon racine git). ID app_… : cherché dans
+# les organisations du compte, sans .clever.json.
+#
 # Lit l'API Clever Cloud avec les identifiants de clever-tools (clever curl) et l'app elle-même
 # avec curl. Aucun secret n'est affiché : chaque réponse est réduite par jq aux seuls champs utiles.
 # Code de sortie : 0 si tout est vert, 1 sinon.
@@ -42,13 +45,22 @@ ligne() { # statut libellé détail
 
 titre() { printf '\n%s\n' "$1"; }
 
-# --- Application : alias de .clever.json, sinon ID cherché dans les organisations du compte
+# --- Application : alias de .clever.json, sinon ID cherché dans les organisations du compte.
+# .clever.json est dans le dossier de la démo, ou à la racine git quand la démo est déployée
+# depuis un dépôt catalogue (APP_FOLDER) : clever-tools l'écrit alors à la racine du dépôt.
 APP_ID=""
 ORG=""
-if [ -f "$DOSSIER/.clever.json" ]; then
+CLEVER_JSON=""
+for d in "$DOSSIER" "$(git -C "$DOSSIER" rev-parse --show-toplevel 2>/dev/null || true)"; do
+  if [ -n "$d" ] && [ -f "$d/.clever.json" ]; then
+    CLEVER_JSON="$d/.clever.json"
+    break
+  fi
+done
+if [ -n "$CLEVER_JSON" ]; then
   read -r APP_ID ORG < <(jq -r --arg c "$CIBLE" \
     '.apps[] | select(.alias == $c or .app_id == $c or .name == $c) | "\(.app_id) \(.org_id)"' \
-    "$DOSSIER/.clever.json" | head -1) || true
+    "$CLEVER_JSON" | head -1) || true
 fi
 if [ -z "$APP_ID" ] && [[ $CIBLE == app_* ]]; then
   for o in $(api v2/organisations | jq -r '.[].id'); do

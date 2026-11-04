@@ -69,6 +69,12 @@ impl IntoResponse for ErreurApp {
     }
 }
 
+/// Ligne inscrite au journal d'accès : son numéro et son heure (Paris), affichés sur la page.
+pub struct Inscription {
+    pub numero: i64,
+    pub heure: String,
+}
+
 /// Journal d'accès en base : qui, quoi, quel patient, quand, IP.
 pub async fn journal(
     pool: &PgPool,
@@ -76,15 +82,18 @@ pub async fn journal(
     action: &str,
     patient_id: Option<i32>,
     ip: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO journal_acces (acteur, action, patient_id, ip) VALUES ($1, $2, $3, $4)")
-        .bind(acteur)
-        .bind(action)
-        .bind(patient_id)
-        .bind(ip)
-        .execute(pool)
-        .await
-        .map(|_| ())
+) -> Result<Inscription, sqlx::Error> {
+    let (numero, heure): (i64, String) = sqlx::query_as(
+        "INSERT INTO journal_acces (acteur, action, patient_id, ip) VALUES ($1, $2, $3, $4)
+         RETURNING id, to_char(created_at AT TIME ZONE 'Europe/Paris', 'HH24:MI:SS')",
+    )
+    .bind(acteur)
+    .bind(action)
+    .bind(patient_id)
+    .bind(ip)
+    .fetch_one(pool)
+    .await?;
+    Ok(Inscription { numero, heure })
 }
 
 /// Chemin tel qu'il apparaît dans les logs : le jeton patient est masqué.
@@ -175,6 +184,30 @@ fn var(nom: &str) -> Option<String> {
     std::env::var(nom).ok().filter(|v| !v.trim().is_empty())
 }
 
+/// Panneau « Running on Clever Cloud » : uniquement ces variables de la plateforme, vide en local.
+fn hebergement() -> Vec<(&'static str, String)> {
+    const NOMS: [&str; 7] = [
+        "CC_APP_NAME",
+        "APP_ID",
+        "INSTANCE_NUMBER",
+        "INSTANCE_TYPE",
+        "CC_PRETTY_INSTANCE_NAME",
+        "CC_COMMIT_ID",
+        "CC_DEPLOYMENT_ID",
+    ];
+    NOMS.into_iter()
+        .filter_map(|nom| {
+            let v = var(nom)?;
+            let v = if nom == "CC_COMMIT_ID" {
+                v.chars().take(7).collect()
+            } else {
+                v
+            };
+            Some((nom, v))
+        })
+        .collect()
+}
+
 async fn connecter(options: PgConnectOptions, max: u32) -> Result<PgPool, String> {
     const ESSAIS: u32 = 20;
     for essai in 1..=ESSAIS {
@@ -198,6 +231,7 @@ async fn connecter(options: PgConnectOptions, max: u32) -> Result<PgPool, String
 async fn demarrer() -> Result<(), String> {
     let production = var("APP_ENV").as_deref() == Some("production");
     let _ = html::PRODUCTION.set(production);
+    let _ = html::HEBERGEMENT.set(hebergement());
 
     let login = var("PRATICIEN_LOGIN").unwrap_or_else(|| "admin".into());
     let password = var("PRATICIEN_PASSWORD").ok_or("PRATICIEN_PASSWORD manquant")?;

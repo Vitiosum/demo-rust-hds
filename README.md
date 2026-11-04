@@ -1,38 +1,44 @@
-# Health Data, Checked Live — Rust and PostgreSQL in the HDS zone on Clever Cloud
+# The Patient File — Rust and PostgreSQL in the HDS zone on Clever Cloud
 
-> A patient follow-up app for a doctor's practice, written in Rust and deployed in Clever Cloud's **HDS zone** (`parhds`, Paris, certified for health data hosting). The practitioner signs in and sees the patients, their next appointment and an alert when one reports pain of 7/10 or more; each patient opens a personal link to read the doctor's instructions and say how they feel. Every access lands in an append-only log. The public page `/conformite` checks 21 HDS good practices live, from the request itself and from the database (TLS read in `pg_stat_ssl`, security headers, session, log trigger), and `scripts/verif-hds.sh` checks the platform side: zone, encryption at rest, backups, forced HTTPS, 2FA. One binary on the **native Rust runtime**, no Dockerfile, and a **PostgreSQL add-on** on a dedicated plan, encrypted at rest.
+> A patient follow-up app for a doctor's practice, drawn as a **paper medical file** and deployed in Clever Cloud's **HDS zone** (`parhds`, Paris, certified for health data hosting). The practitioner's space is a manila folder with coloured tabs: each patient is an index card with a small pain chart drawn in SVG, and a red stamp when they report a pain of 7/10 or more. The patient's personal link is an appointment card, where they say how they feel on a 0 to 10 scale. Every access lands in a numbered, append-only register (a PostgreSQL trigger refuses any erasure), and each page that opens patient data shows the register number it has just written, as a blue rubber stamp. The public page `/conformite` is an **inspection report**: 21 HDS good practices checked live, from the request itself and from the database (TLS version and cipher read in `pg_stat_ssl`, security headers, session, log trigger), with the proof typed on each line and a final stamp. `scripts/verif-hds.sh` checks the platform side: zone, encryption at rest, backups, forced HTTPS, 2FA. One binary on the **native Rust runtime**, no Dockerfile, a **PostgreSQL add-on** on a dedicated plan, encrypted at rest, and no third-party resource at all: system fonts, SVG drawings, no JavaScript.
 
-![The practitioner's dashboard, run locally: three fictional patients, one pain alert](docs/screenshot-desktop.png)
+![The practitioner's folder, run locally: three fictional patients as index cards, one pain alert stamped 8/10, the access-register stamp](docs/screenshot-desktop.png)
 
-<img src="docs/screenshot-phone.png" alt="A patient's personal page on a phone, run locally: next appointment, instructions, pain form" width="300">
+<img src="docs/screenshot-phone.png" alt="A patient's appointment card on a phone, run locally: next appointment, instructions, pain scale with 6 selected" width="300">
 
 **Run it yourself.** The hosted demo was taken down after the presales review (November 2026). The steps in [Deploy on Clever Cloud](#deploy-on-clever-cloud) recreate it from scratch in about 5 minutes.
 
 **Fictional data only;** production health data requires a signed HDS contract with Clever Cloud.
 
+![A patient's file, run locally: the pain chart with its alert zone above 7, the appointment card holding the personal link, and the register stamp](docs/screenshot-fiche.png)
+
 ## What the HDS zone does here
 
-![The /conformite page, run locally: TLS and HTTPS checks only pass on Clever Cloud](docs/screenshot-conformite.png)
+![The /conformite inspection report, run locally: the database TLS line fails locally, hence the red stamp; on Clever Cloud the same page reads 21 OK, 0 KO](docs/screenshot-conformite.png)
 
-| Practice | How | Where you see it |
+| Practice | How | Where you see it in the file |
 |---|---|---|
-| HDS zone | `--region parhds` for the app and the database | `verif-hds.sh` (zone tagged `contract:hds` in the zones API), Console |
-| Dedicated plan, not DEV | `--plan xxs_sml`: dedicated instance, 45 connections, backups. The DEV plan is shared, without encryption or backups | `verif-hds.sh`, add-on Console |
-| Encryption at rest | `--option encryption=true` when the database is created, permanent | `verif-hds.sh` (API v4 addon-providers) |
-| TLS everywhere | Database in `sslmode=require` (the app refuses `PG_SSL=disable` in production); HTTPS in the browser | `/conformite`: TLS version and cipher read in `pg_stat_ssl` |
-| Forced HTTPS + HSTS | `clever config set force-https true`, a 301 redirect in the app too, HSTS for one year | `verif-hds.sh` (curl http → 301), `/conformite` |
-| Security headers | Strict CSP (`default-src 'none'`, `frame-ancestors 'none'`), `nosniff`, `Referrer-Policy`, `Cache-Control: no-store` | `/conformite`, `curl -I` |
+| HDS zone | `--region parhds` for the app and the database | Report part 7, checked by `verif-hds.sh` (zone tagged `contract:hds` in the zones API) |
+| Dedicated plan, not DEV | `--plan xxs_sml`: dedicated instance, 45 connections, backups. The DEV plan is shared, without encryption or backups | Report part 7, `verif-hds.sh` |
+| Encryption at rest | `--option encryption=true` when the database is created, permanent | Report part 7, `verif-hds.sh` (API v4 addon-providers) |
+| TLS everywhere | Database in `sslmode=require` (the app refuses `PG_SSL=disable` in production); HTTPS in the browser | Report line 1: TLS version and cipher read in `pg_stat_ssl` |
+| Forced HTTPS + HSTS | `clever config set force-https true`, a 301 redirect in the app too, HSTS for one year | Report lines 4 to 6, `verif-hds.sh` (curl http → 301) |
+| Security headers | Strict CSP (`default-src 'none'`, `frame-ancestors 'none'`, no script at all), `nosniff`, `Referrer-Policy`, `Cache-Control: no-store` | Report lines 6 to 11, each with the header value typed as proof |
 | No direct access to instances | Only the Clever Cloud load balancer is exposed; no direct host or port access; interventions through the platform's authenticated tools (Console, `clever ssh`) | Console |
-| 2FA for every member | Enabled on every account of the organisation | `verif-hds.sh` (organisations/members API) |
+| 2FA for every member | Enabled on every account of the organisation | Report part 7, `verif-hds.sh` (organisations/members API) |
 | Least privilege | Organisation roles: Developer to deploy, Accountant for billing, Admin restricted | Console › Members |
 | Secrets in variables | `clever env set`, password generated without being shown, `.env` ignored by git | `clever env` (names only) |
-| Logs without health data | One line per request: method, path, status, duration. The `/p/…` token is masked, never a name or a comment, SQL errors reduced to their SQLSTATE code | `clever logs`, `/conformite` |
-| Access log | Table `journal_acces` (who, what, which patient, when, IP), append-only: a trigger refuses UPDATE, DELETE and TRUNCATE | `/journal`, `/conformite` (`pg_trigger`) |
-| Short sessions | Server-side session, 15 min of inactivity, 8 h at most; cookie `HttpOnly`, `SameSite=Strict`, `Secure` (`__Host-`); 5 failures from one IP block it for 15 min; cross-origin writes refused (CSRF) | `/conformite` |
-| Daily backups | Included in the dedicated plan (7 kept) | `verif-hds.sh`, Console › Backups |
+| Logs without health data | One line per request: method, path, status, duration. The `/p/…` token is masked, never a name or a comment, SQL errors reduced to their SQLSTATE code | Report lines 21 and 22, `clever logs` |
+| Access register | Table `journal_acces` (who, what, which patient, when, IP), append-only: a trigger refuses UPDATE, DELETE and TRUNCATE | The blue register stamp on the practitioner's pages (a line on the patient's), the numbered register at `/journal` (the line just written is highlighted), report lines 18 to 20 (`pg_trigger`) |
+| Short sessions | Server-side session, 15 min of inactivity, 8 h at most; cookie `HttpOnly`, `SameSite=Strict`, `Secure` (`__Host-`); 5 failures from one IP block it for 15 min; cross-origin writes refused (CSRF) | Report lines 12 to 17 |
+| Daily backups | Included in the dedicated plan (7 kept) | Report part 7, `verif-hds.sh`, Console › Backups |
 | Custom domain + HDS contract | No production on `cleverapps.io`; HDS contract signed before any real data | [Before real health data](#before-real-health-data) |
 
-`/conformite` (and `/conformite.json`) holds no patient data: 21 checks plus the PostgreSQL version, computed at each load, and the six platform points that `verif-hds.sh` covers. Run locally, the database TLS check fails and the sslmode, HTTPS and Secure-cookie lines are information only. The PostgreSQL add-on's TLS certificate is self-signed: `require` encrypts the connection without verifying the chain.
+`/conformite` (and `/conformite.json`, unchanged) holds no patient data: 21 checks plus the PostgreSQL version, computed at each load, and the six platform points that `verif-hds.sh` covers. The final stamp reads **Conforme** when no line fails. On Clever Cloud (`parhds`, 4 November 2026) the page read 21 OK, 0 KO, 1 info (the PostgreSQL version). Run locally, the database TLS line fails and the sslmode, HTTPS and Secure-cookie lines are information only. The PostgreSQL add-on's TLS certificate is self-signed: `require` encrypts the connection without verifying the chain.
+
+![The end of the report, run locally: the six platform points left to verif-hds.sh, the visa, and the Clever Cloud Academy seal](docs/screenshot-visa.png)
+
+The report closes on a visa and a seal: the Clever Cloud Academy badge, with "Cette app tourne sur Clever Cloud. Vous aussi, certifiez-vous." and a link to [academy.clever.cloud](https://academy.clever.cloud). Every other page carries the same invitation at the foot of the folder, next to the "Running on Clever Cloud" archive label (`CC_APP_NAME`, `APP_ID`, `INSTANCE_NUMBER`, `INSTANCE_TYPE`, `CC_PRETTY_INSTANCE_NAME`, short `CC_COMMIT_ID`, `CC_DEPLOYMENT_ID`; "Local" outside the platform).
 
 ## Deploy on Clever Cloud
 
@@ -83,7 +89,7 @@ Measured on 4 November 2026 (app in `parhds`, dedicated M build), following thes
 | Full `clever deploy` (push, queue ~11 s, build, start and `/health` 10 s) | 1 min 30 s |
 | `verif-hds.sh` | 9/9 checks green |
 
-At startup the app reached PostgreSQL 18.6 over TLSv1.3 (`TLS_AES_256_GCM_SHA384`), and ran the migrations and the seed in under a second. `force-https` was already `ENABLED` before step 4 (likely the default in `parhds`); the command keeps the setting explicit and checkable. The add-on port did not answer from a laptop (`pg_isready` failed): check the database through `/conformite`, not with `psql`. A clean local build (Mac M, 194 crates) takes 42 s.
+At startup the app reached PostgreSQL 18.6 over TLSv1.3 (`TLS_AES_256_GCM_SHA384`), and ran the migrations and the seed in under a second. `force-https` was already `ENABLED` before step 4 (likely the default in `parhds`); the command keeps the setting explicit and checkable. The add-on also answers from a laptop: `pg_isready` succeeds and a `pg_dump | psql` copy over TLS copied 50 of 50 rows; `/conformite` stays the quickest check, without handling any credential. A clean local build (Mac M, 194 crates) takes 42 s.
 
 ## Variables
 
@@ -103,7 +109,19 @@ At startup the app reached PostgreSQL 18.6 over TLSv1.3 (`TLS_AES_256_GCM_SHA384
 
 ## Routes
 
-`/` → `/praticien` · `/connexion` (sign-in) and `/deconnexion` · `/praticien` (patients, alerts, new patient) · `/praticien/patients/{id}` (record, history, personal link, instructions) · `/p/{jeton}` (patient page, 24 random bytes) · `/journal` (access log) · `/conformite` and `/conformite.json` (public) · `/health` (database `SELECT 1`) · `/cc-brand.css`, `/app.css`.
+Unchanged by the paper-file redesign:
+
+| Route | In the file |
+|---|---|
+| `/` | → `/praticien` |
+| `/connexion`, `/deconnexion` | The closed folder, stamped "Confidentiel", with the sign-in label |
+| `/praticien` | The open folder: one index card per patient (mini pain chart, alert stamp), new-patient sheet |
+| `/praticien/patients/{id}` | The patient's file: pain chart, appointment card with the personal link, entries, instructions |
+| `/p/{jeton}` | The patient's booklet: appointment card, 0 to 10 pain scale, own chart (token: 24 random bytes) |
+| `/journal` | The numbered access register, current line highlighted |
+| `/conformite`, `/conformite.json` | The inspection report (public), and the same checks in JSON |
+| `/health` | Database `SELECT 1` |
+| `/cc-brand.css`, `/app.css` | Clever Brand Kit and the paper-file styles |
 
 ## Code tour
 
@@ -112,11 +130,11 @@ src/main.rs          configuration, middleware (HTTPS, CSRF, headers, logs), rou
 src/auth.rs          sign-in, server-side sessions, block after 5 failures, client IP (unit tests)
 src/pages.rs         practitioner pages, patient page, access log, demo data
 src/conformite.rs    the checks behind /conformite and /conformite.json
-src/html.rs          HTML pages (format! + escaping)
+src/html.rs          HTML pages (format! + escaping): folder, index cards, SVG pain chart, stamps, report
 src/migrations.rs    migrations embedded in the binary (include_str!, no sqlx macros: shorter build)
 migrations/          SQL schema, with the append-only trigger
-static/              Clever Brand Kit (cc-brand.css, logo) and app.css; no third-party font or script
-scripts/verif-hds.sh platform checklist, no secret printed
+static/              Clever Brand Kit (cc-brand.css, logo, Academy badge) and app.css; system fonts, no third-party resource, no script
+scripts/verif-hds.sh platform checklist, no secret printed; reads .clever.json in the demo folder or at the git root, or takes an app_… ID
 ```
 
 Rust 1.85+, axum 0.8, sqlx 0.8 (PostgreSQL, rustls), server-rendered HTML.
@@ -130,10 +148,10 @@ createdb suivi_patient_hds
 cp .env.example .env          # fictional values, admin / admin
 set -a && . ./.env && set +a
 cargo run --release           # http://localhost:8080
-cargo test                    # client IP parsing
+cargo test                    # client IP parsing, pain chart (5 tests)
 ```
 
-Locally `admin` / `admin` is accepted and a "Version locale" banner shows. `PG_SSL=disable` is accepted only outside production.
+Locally `admin` / `admin` is accepted and a "Version locale · données fictives" label is pinned on the folder (in production: "Hébergé en zone HDS · Clever Cloud"). `PG_SSL=disable` is accepted only outside production.
 
 ## Before real health data
 
@@ -142,6 +160,6 @@ Locally `admin` / `admin` is accepted and a "Version locale" banner shows. `PG_S
 3. **Named sign-in**: one account per practitioner with a second factor (Pro Santé Connect or OpenID Connect) instead of the single account.
 4. **Patient links** with a limited lifetime, revocable, sent through a controlled channel (MSSanté).
 5. **Access log** kept for the regulatory period and exported out of the database (SIEM); a separate PostgreSQL role for the app, without rights on the trigger.
-6. **Database** sized to use, backup retention aligned with the impact assessment (DPIA), PostgreSQL certificate pinned (`verify-ca`).
+6. **Database** sized to use, backup retention aligned with the impact assessment (DPIA); certificate verification (`verify-full`) only works by pinning the add-on's self-signed certificate by hand, as no CA certificate variable is provided.
 7. **Resilience**: at least 2 instances (`clever scale --min-instances 2`), alerts.
 8. **Shared brute-force counter**: the failure counter lives in memory, per instance; share it (HDS Redis) beyond one instance.

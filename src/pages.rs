@@ -22,6 +22,8 @@ pub struct LignePatient {
     pub rdv: Option<NaiveDateTime>,
     pub non_lus: i64,
     pub alerte: bool,
+    /// Douleurs des 8 dernières saisies, de la plus ancienne à la plus récente.
+    pub douleurs: Vec<i16>,
 }
 
 pub struct Patient {
@@ -42,6 +44,7 @@ pub struct Suivi {
 }
 
 pub struct EntreeJournal {
+    pub numero: i64,
     pub quand: String,
     pub acteur: String,
     pub action: String,
@@ -61,6 +64,7 @@ impl LignePatient {
             rdv: r.try_get("rdv")?,
             non_lus: r.try_get("non_lus")?,
             alerte: r.try_get("alerte")?,
+            douleurs: r.try_get("douleurs")?,
         })
     }
 }
@@ -93,6 +97,7 @@ impl Suivi {
 impl EntreeJournal {
     fn lire(r: PgRow) -> Result<Self, sqlx::Error> {
         Ok(Self {
+            numero: r.try_get("id")?,
             quand: r.try_get("quand")?,
             acteur: r.try_get("acteur")?,
             action: r.try_get("action")?,
@@ -137,7 +142,10 @@ pub async fn tableau_de_bord(State(app): State<Arc<App>>, moi: Praticien) -> Res
     let patients = sqlx::query(
         "SELECT p.id, p.prenom, p.nom, p.motif, p.prochain_rdv AT TIME ZONE 'Europe/Paris' AS rdv,
                 COUNT(s.id) FILTER (WHERE NOT s.lu) AS non_lus,
-                COALESCE(BOOL_OR(s.douleur >= 7 AND NOT s.lu), false) AS alerte
+                COALESCE(BOOL_OR(s.douleur >= 7 AND NOT s.lu), false) AS alerte,
+                COALESCE((SELECT array_agg(d.douleur ORDER BY d.created_at)
+                          FROM (SELECT douleur, created_at FROM suivis WHERE patient_id = p.id
+                                ORDER BY created_at DESC LIMIT 8) d), '{}') AS douleurs
          FROM patients p LEFT JOIN suivis s ON s.patient_id = p.id
          GROUP BY p.id
          ORDER BY alerte DESC, p.prochain_rdv NULLS LAST, p.id",
@@ -145,8 +153,8 @@ pub async fn tableau_de_bord(State(app): State<Arc<App>>, moi: Praticien) -> Res
     .try_map(LignePatient::lire)
     .fetch_all(&app.pool)
     .await?;
-    journal(&app.pool, &moi.login, "liste_patients", None, &moi.ip).await?;
-    Ok(Html(html::tableau_de_bord(&patients)))
+    let inscription = journal(&app.pool, &moi.login, "liste_patients", None, &moi.ip).await?;
+    Ok(Html(html::tableau_de_bord(&patients, &inscription)))
 }
 
 #[derive(Deserialize)]
@@ -226,9 +234,9 @@ pub async fn fiche_patient(
         .bind(id)
         .execute(&app.pool)
         .await?;
-    journal(&app.pool, &moi.login, "consultation_dossier", Some(id), &moi.ip).await?;
+    let inscription = journal(&app.pool, &moi.login, "consultation_dossier", Some(id), &moi.ip).await?;
     let lien = format!("{}/p/{}", origine(&headers), p.token);
-    Ok(Html(html::fiche_patient(&p, &suivis, &lien)).into_response())
+    Ok(Html(html::fiche_patient(&p, &suivis, &lien, &inscription)).into_response())
 }
 
 #[derive(Deserialize)]
@@ -289,8 +297,9 @@ pub async fn espace_patient(
     .try_map(Suivi::lire)
     .fetch_all(&app.pool)
     .await?;
-    journal(&app.pool, "patient", "consultation_espace", Some(p.id), &ip).await?;
-    Ok(Html(html::espace_patient(&p, &suivis, uri.query() == Some("merci=1"))).into_response())
+    let inscription = journal(&app.pool, "patient", "consultation_espace", Some(p.id), &ip).await?;
+    let merci = uri.query() == Some("merci=1");
+    Ok(Html(html::espace_patient(&p, &suivis, merci, &inscription)).into_response())
 }
 
 #[derive(Deserialize)]
@@ -325,9 +334,9 @@ pub async fn saisie_patient(
 }
 
 pub async fn journal_acces(State(app): State<Arc<App>>, moi: Praticien) -> Result<Html<String>, ErreurApp> {
-    journal(&app.pool, &moi.login, "consultation_journal", None, &moi.ip).await?;
+    let inscription = journal(&app.pool, &moi.login, "consultation_journal", None, &moi.ip).await?;
     let entrees = sqlx::query(
-        "SELECT to_char(j.created_at AT TIME ZONE 'Europe/Paris', 'DD/MM/YYYY HH24:MI:SS') AS quand,
+        "SELECT j.id, to_char(j.created_at AT TIME ZONE 'Europe/Paris', 'DD/MM/YYYY HH24:MI:SS') AS quand,
                 j.acteur, j.action, j.patient_id, p.prenom || ' ' || p.nom AS patient, j.ip
          FROM journal_acces j LEFT JOIN patients p ON p.id = j.patient_id
          ORDER BY j.id DESC LIMIT 200",
@@ -338,10 +347,11 @@ pub async fn journal_acces(State(app): State<Arc<App>>, moi: Praticien) -> Resul
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM journal_acces")
         .fetch_one(&app.pool)
         .await?;
-    Ok(Html(html::journal(&entrees, total)))
+    Ok(Html(html::journal(&entrees, total, &inscription)))
 }
 
-/// Données de démonstration, entièrement fictives (mêmes patients que la version Node).
+/// Données de démonstration, entièrement fictives (mêmes patients que la version Node,
+/// avec deux semaines de saisies pour la frise de la douleur).
 pub async fn donnees_demo(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     // Verrou : deux instances qui démarrent ensemble ne créent pas deux fois les patients.
@@ -354,64 +364,93 @@ pub async fn donnees_demo(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     if n > 0 {
         return tx.commit().await;
     }
-    // (prénom, nom, motif, consignes, RDV dans N jours, douleur, tension)
-    type Fictif = (
-        &'static str,
-        &'static str,
-        &'static str,
-        &'static str,
-        i32,
-        i16,
-        Option<&'static str>,
-    );
-    let patients: [Fictif; 3] = [
-        (
-            "Camille",
-            "Martin",
-            "Suivi post-opératoire genou",
-            "Glace 3 fois par jour, kiné 2 fois par semaine.",
-            3,
-            8,
-            None,
-        ),
-        (
-            "Lucas",
-            "Bernard",
-            "Hypertension, ajustement du traitement",
-            "Prendre la tension matin et soir.",
-            7,
-            2,
-            Some("14/9"),
-        ),
-        (
-            "Inès",
-            "Petit",
-            "Lombalgie chronique",
-            "Marche 20 minutes par jour.",
-            14,
-            4,
-            None,
-        ),
+    // Saisie fictive : (il y a N jours, douleur, tension, commentaire). La dernière, du jour, reste non lue.
+    type Saisie = (i32, i16, Option<&'static str>, &'static str);
+    struct Fictif {
+        prenom: &'static str,
+        nom: &'static str,
+        motif: &'static str,
+        consignes: &'static str,
+        rdv_dans_jours: i32,
+        rdv_heure: &'static str,
+        saisies: [Saisie; 5],
+    }
+    let patients = [
+        Fictif {
+            prenom: "Camille",
+            nom: "Martin",
+            motif: "Suivi post-opératoire genou",
+            consignes: "Glace 3 fois par jour, kiné 2 fois par semaine.",
+            rdv_dans_jours: 3,
+            rdv_heure: "09:30",
+            saisies: [
+                (12, 7, None, "Genou très gonflé, première nuit à la maison"),
+                (9, 6, None, "La glace soulage"),
+                (6, 5, None, "Kiné : flexion à 90°"),
+                (3, 4, None, "Je marche sans béquille dans l'appartement"),
+                (0, 8, None, "Douleur vive après les escaliers, genou chaud"),
+            ],
+        },
+        Fictif {
+            prenom: "Lucas",
+            nom: "Bernard",
+            motif: "Hypertension, ajustement du traitement",
+            consignes: "Prendre la tension matin et soir.",
+            rdv_dans_jours: 7,
+            rdv_heure: "14:00",
+            saisies: [
+                (13, 2, Some("15/9"), "Nouveau traitement commencé"),
+                (10, 1, Some("15/9"), ""),
+                (7, 2, Some("14/9"), "Un peu fatigué le matin"),
+                (4, 1, Some("13/8"), ""),
+                (0, 2, Some("14/9"), "Mesures du matin et du soir notées"),
+            ],
+        },
+        Fictif {
+            prenom: "Inès",
+            nom: "Petit",
+            motif: "Lombalgie chronique",
+            consignes: "Marche 20 minutes par jour.",
+            rdv_dans_jours: 14,
+            rdv_heure: "10:15",
+            saisies: [
+                (14, 6, None, "Dos bloqué au réveil"),
+                (10, 5, None, "Marche faite 3 jours sur 4"),
+                (7, 5, None, ""),
+                (3, 5, None, "Raideur le matin seulement"),
+                (0, 4, None, "Moins de raideur après la marche"),
+            ],
+        },
     ];
-    for (prenom, nom, motif, consignes, jours, douleur, tension) in patients {
+    for f in patients {
         let id: i32 = sqlx::query_scalar(
             "INSERT INTO patients (prenom, nom, motif, consignes, prochain_rdv, token)
-             VALUES ($1, $2, $3, $4, now() + make_interval(days => $5), $6) RETURNING id",
+             VALUES ($1, $2, $3, $4, (current_date + $5 + $6::time) AT TIME ZONE 'Europe/Paris', $7)
+             RETURNING id",
         )
-        .bind(prenom)
-        .bind(nom)
-        .bind(motif)
-        .bind(consignes)
-        .bind(jours)
+        .bind(f.prenom)
+        .bind(f.nom)
+        .bind(f.motif)
+        .bind(f.consignes)
+        .bind(f.rdv_dans_jours)
+        .bind(f.rdv_heure)
         .bind(jeton(24))
         .fetch_one(&mut *tx)
         .await?;
-        sqlx::query("INSERT INTO suivis (patient_id, douleur, tension, commentaire) VALUES ($1, $2, $3, 'Saisie de démonstration')")
+        for (jours, douleur, tension, commentaire) in f.saisies {
+            sqlx::query(
+                "INSERT INTO suivis (patient_id, douleur, tension, commentaire, lu, created_at)
+                 VALUES ($1, $2, $3, $4, $5, now() - make_interval(days => $6))",
+            )
             .bind(id)
             .bind(douleur)
             .bind(tension)
+            .bind(commentaire)
+            .bind(jours > 0)
+            .bind(jours)
             .execute(&mut *tx)
             .await?;
+        }
     }
     tx.commit().await?;
     println!("Données de démo créées (3 patients fictifs).");

@@ -27,7 +27,9 @@ Suivi patient en Rust (axum + sqlx), à déployer en zone HDS sur Clever Cloud. 
 - Routes axum 0.8 : `/p/{jeton}`, jamais `:jeton` (panique au démarrage).
 - Requêtes SQL paramétrées uniquement ; dates converties à l'heure de Paris par PostgreSQL (`AT TIME ZONE 'Europe/Paris'`).
 - IP client : dernière valeur de la **dernière ligne** `X-Forwarded-For` (ajoutée par le proxy Clever), validée comme adresse IP, sinon l'adresse de la socket. Jamais la première valeur ni une ligne envoyée par le client (tests dans `src/auth.rs`).
-- `static/cc-brand.css` est la copie du kit de marque : ne jamais le modifier, styles propres dans `static/app.css`. Pas de Google Fonts : aucune ressource tierce sur une app de santé.
+- `static/cc-brand.css` et `static/cc-badge.svg` sont des copies du kit de marque : ne jamais les modifier, styles propres dans `static/app.css`. Pas de Google Fonts : aucune ressource tierce sur une app de santé (polices système : Seravek, American Typewriter, DIN Condensed, avec repli).
+- Interface « dossier médical papier » : chemise à onglets, fiches, carte de rendez-vous, registre numéroté, `/conformite` en rapport d'inspection tamponné. La CSP interdit tout script et tout `style="…"` : dessins en SVG (attributs de présentation), aucune ligne de JS.
+- `scripts/verif-hds.sh` lit `.clever.json` dans le dossier de la démo, sinon à la racine git (déploiement depuis un catalogue avec `APP_FOLDER`) ; un ID `app_…` marche sans `.clever.json`. `bash -n` et `shellcheck` doivent passer.
 - Le blocage après 5 échecs est en mémoire : propre à chaque instance, remis à zéro au redémarrage.
 
 ## Mesures (preuve du 2026-11-04, app `demo-rust-hds-proof`)
@@ -35,5 +37,6 @@ Suivi patient en Rust (axum + sqlx), à déployer en zone HDS sur Clever Cloud. 
 - `clever deploy` complet : 90 s. File d'attente ~11 s, build 41 s (cargo 27 s sur M, 20 s d'envoi du cache de build de 985 Mo et du cache de dépendances), démarrage + `/health` 10 s.
 - Au démarrage : base jointe en TLSv1.3 (`TLS_AES_256_GCM_SHA384`), PostgreSQL 18.6, migrations et seed en moins d'une seconde.
 - `force-https` était déjà `ENABLED` avant l'étape 5 (vraisemblablement le défaut en `parhds`) ; la commande du README reste, elle rend le réglage explicite et vérifiable.
-- Depuis le Mac, le port de l'add-on ne répond pas (`pg_isready` en échec) : ne pas compter sur `psql` en direct pendant la vidéo, passer par l'app (`/conformite`).
-- Piste non testée pour gagner ~15 s au premier déploiement : alléger le cache de build (`CC_IGNORE_FROM_BUILDCACHE`), au risque de builds suivants plus longs.
+- Depuis le Mac, l'add-on `parhds` répond (`pg_isready` OK) et une copie `pg_dump | psql` en TLS a recopié 50/50 lignes (tests du 2026-11-04). Pour la vidéo, `/conformite` reste la preuve la plus rapide, sans manipuler d'identifiants.
+- Certificat TLS de l'add-on autosigné : `sslmode=require` chiffre sans vérifier la chaîne. Il n'existe pas de variable `POSTGRESQL_CA_CERT` ; `verify-full` ne marche qu'en épinglant ce certificat à la main.
+- `/conformite` sur Clever Cloud (parhds, 2026-11-04) : 21 OK, 0 KO, 1 info (version de PostgreSQL).

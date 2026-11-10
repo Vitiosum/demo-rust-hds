@@ -15,7 +15,7 @@ Suivi patient en Rust (axum + sqlx), à déployer en zone HDS sur Clever Cloud. 
 
 ## Règles HDS
 
-- Jamais de secret à l'écran : variables listées par leur nom (`clever env | grep -oE '^[A-Za-z_][A-Za-z0-9_]*='`), mot de passe généré dans un fichier, jamais `clever env import`.
+- Jamais de secret à l'écran : variables listées par leur nom (`clever env | grep -oE '^[A-Za-z_][A-Za-z0-9_]*='`), mot de passe généré dans la commande `clever env set` (aucun fichier ; il se lit dans la Console, variable `PRATICIEN_PASSWORD`), jamais `clever env import`.
 - L'app lit `POSTGRESQL_ADDON_URI` ; ne jamais la recopier dans `DATABASE_URL`.
 - Données fictives uniquement (`SEED_DEMO=true`). Aucun nom, commentaire ni jeton dans les logs.
 - Preuve finale : `./scripts/verif-hds.sh <app>` tout vert, puis `/conformite` (TLS base avec version et chiffrement).

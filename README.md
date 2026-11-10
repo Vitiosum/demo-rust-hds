@@ -2,6 +2,8 @@
 
 > A patient follow-up app for a doctor's practice, drawn as a **paper medical file** and deployed in Clever Cloud's **HDS zone** (`parhds`, Paris, certified for health data hosting). The practitioner's space is a manila folder with coloured tabs: each patient is an index card with a small pain chart drawn in SVG, and a red stamp when they report a pain of 7/10 or more. The patient's personal link is an appointment card, where they say how they feel on a 0 to 10 scale. Every access lands in a numbered, append-only register (a PostgreSQL trigger refuses any erasure), and each page that opens patient data shows the register number it has just written, as a blue rubber stamp. The public page `/conformite` is an **inspection report**: 21 HDS good practices checked live, from the request itself and from the database (TLS version and cipher read in `pg_stat_ssl`, security headers, session, log trigger), with the proof typed on each line and a final stamp. `scripts/verif-hds.sh` checks the platform side: zone, encryption at rest, backups, forced HTTPS, 2FA. One binary on the **native Rust runtime**, no Dockerfile, a **PostgreSQL add-on** on a dedicated plan, encrypted at rest, and no third-party resource at all: system fonts, SVG drawings, no JavaScript.
 
+![Run locally with a local PostgreSQL and fictional data: a patient reports a pain of 8/10 on his appointment card, and his index card gets the red alert stamp in the practitioner's folder](docs/tour.gif)
+
 ![The practitioner's folder, on Clever Cloud (HDS zone): three fictional patients as index cards, one pain alert stamped 8/10, the access-register stamp](docs/screenshot-desktop.png)
 
 <img src="docs/screenshot-phone.png" alt="A patient's appointment card on a phone, on Clever Cloud (HDS zone): next appointment, instructions, pain scale with 6 selected" width="300">
@@ -59,12 +61,11 @@ clever scale --min-flavor nano --max-flavor XS --min-instances 1 --max-instances
 clever addon create postgresql-addon demo-rust-hds-db --plan xxs_sml --option encryption=true --region parhds --org <org_id> --yes
 clever service link-addon demo-rust-hds-db
 
-# 3. Variables; the practitioner password is generated into a file outside the repo, never shown
+# 3. Variables; the practitioner password is generated inside the command: never shown, never written to a file
 clever env set APP_ENV production
 clever env set SEED_DEMO true
 clever env set PRATICIEN_LOGIN admin
-(umask 077 && openssl rand -hex 16 > "$HOME/.demo-rust-hds.pwd")
-clever env set PRATICIEN_PASSWORD "$(cat "$HOME/.demo-rust-hds.pwd")" > /dev/null
+clever env set PRATICIEN_PASSWORD "$(openssl rand -hex 16)" > /dev/null
 clever env set CC_CACHE_DEPENDENCIES true
 clever env set CC_HEALTH_CHECK_PATH /health
 
@@ -79,7 +80,7 @@ clever domain
 ./scripts/verif-hds.sh demo-rust-hds
 ```
 
-Then open `https://<domain>/conformite`, and `https://<domain>/connexion` with `admin` and the password in `~/.demo-rust-hds.pwd` (`pbcopy < ~/.demo-rust-hds.pwd` on macOS).
+Then open `https://<domain>/conformite`, and `https://<domain>/connexion` with `admin` and the generated password: read it in the Console, in the environment variables of the app (`PRATICIEN_PASSWORD`). It is stored nowhere else.
 
 Measured on 4 November 2026 (app in `parhds`, dedicated M build), following these steps to the letter:
 
